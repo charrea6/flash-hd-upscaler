@@ -1,0 +1,1 @@
+@DEL /q "to_convert\*"
