@@ -98,7 +98,11 @@ def load_flash_format_0303(fn):
         h = header[3]
 
         clut = []
-        for i in range(header[9]):
+        nrof_colours = header[9]
+        if nrof_colours == 0:
+            nrof_colours = 256
+
+        for i in range(nrof_colours):
             ARGB = f.read(4)
             clut.append(ARGB[1:] + ARGB[0])
 
