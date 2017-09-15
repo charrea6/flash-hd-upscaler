@@ -69,14 +69,23 @@ def load_flash_format_0503(fn):
         h = header[3]
 
         variant = get_header(f, b'<B')
-        if variant[0] != 1:
+        if variant[0] == 0:
+            #
+            # Uncompressed pixel data
+            #
+            result = f.read()
+
+        elif variant[0] == 1:
+            #
+            # Extract the pixels and decompress...
+            #
+            result = read_compressed_data(f)
+
+        else:
+
             print '%s: Unknown variant! %r' % (fn, variant)
             return None
 
-        #
-        # Extract the pixels and decompress...
-        #
-        result = read_compressed_data(f)
 
     # Convert ARGB to RGBA for PIL
     converted = ''
