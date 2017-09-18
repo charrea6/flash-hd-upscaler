@@ -62,8 +62,9 @@ def unzip_fla_to_directory(fla_file, directory):
         zip_ref.close()
         return True
     except:
-        print "ERROR: Invalid FLA/ZIP %s" % fla_file
-        return False
+        print "WARN: Invalid FLA/ZIP %s" % fla_file
+        shell_unzip_fla_to_directory(fla_file, directory)
+        return True
 
 
 def create_zip_from_directory(fla_file, dir_path):
