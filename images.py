@@ -291,6 +291,7 @@ class DatImage:
     def insert_alternate_dest_png(self, alternate_png):
         self.dest_image = Image.open(alternate_png)
         self.dest_image.save(self.dest_png_file)
+        self.dest_w, self.dest_h = self.dest_image.size
 
     def insert_dest_png(self):
         if self.invalid or self.dest_header:
