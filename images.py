@@ -302,10 +302,9 @@ class DatImage:
         if not self.dest_image:
             return
 
-
         self.dest_header = struct.pack('<HHHHIIIIBB', ARGB_MAGIC, self.dest_w * 4, self.dest_w, self.dest_h, 0,
                                        pixels_to_twips(self.dest_w), 0, pixels_to_twips(self.dest_h), 1, 1)
-        data = self.dest_image.tobytes()
+        data = self.dest_image.convert(mode='RGBA').tobytes()
         converted = ''
         for x in range(0, len(data), 4):
             converted += data[x + 3] + data[x:x + 3]
@@ -328,11 +327,6 @@ class DatImage:
     def get_dest_image_filename(self):
         # --- Upscale or inserted?
         return self.dest_png_file
-
-    # def extract_dest_image(self, dest_file):
-    #     self.extract_src_png()
-    #
-    #     shutil.copy(self.src_png_file, dest_file)
 
     def tidy(self):
         if True:

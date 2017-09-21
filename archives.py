@@ -13,9 +13,6 @@ XML_EXTENSION = 'xml'
 DAT_EXTENSION = 'dat'
 PNG_EXTENSION = 'png'
 
-USE_SPECIFIC_DIR = True
-SPECIFIC_DIR = 'expanded'
-
 
 def get_basename(filename):
     return filename.split('\\')[-1].split('/')[-1]
@@ -27,10 +24,14 @@ def CRC32_from_file(filename):
     return "%08X" % buf
 
 
+def ensure_dir_exists(directory):
+    if not os.path.exists(directory):
+            os.makedirs(directory)
+
+
 def ensure_dir_exists_for_file(filename):
     folder = os.path.dirname(filename)
-    if not os.path.exists(folder):
-        os.makedirs(folder)
+    ensure_dir_exists(folder)
 
 
 def get_fla_name(fla_file):
@@ -38,14 +39,13 @@ def get_fla_name(fla_file):
     return fla_name
 
 
-def create_temp_dir(fla_file):
-    if USE_SPECIFIC_DIR:
-        base_fla_file = fla_file.split(os.path.sep)[1].rstrip('.%s' % FLA_EXTENSION)
-        directory = os.path.join(SPECIFIC_DIR, base_fla_file)
-        print directory
+def create_temp_dir(fla_file, expanded_dir=None):
+    if expanded_dir:
+        base_fla_file = get_basename(fla_file).rstrip('.%s' % FLA_EXTENSION)
+        directory = os.path.join(expanded_dir, base_fla_file)
         if os.path.isdir(directory):
             shutil.rmtree(directory)
-        os.mkdir(directory)
+            ensure_dir_exists(directory)
         return directory
     else:
         return tempfile.mkdtemp()
@@ -53,6 +53,7 @@ def create_temp_dir(fla_file):
 
 def shell_unzip_fla_to_directory(fla_file, dir_path):
     os.system('unzip -qq -d "%s" "%s"' % (dir_path, fla_file))
+
 
 
 def unzip_fla_to_directory(fla_file, directory):

@@ -24,8 +24,6 @@ if __name__ == '__main__':
 
     # --- Scan all FLA
     for fla_file in fla_files:
-        print fla_file
-
         # --- Extract
         temp_dir_path = create_temp_dir(fla_file)
 
