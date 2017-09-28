@@ -1,6 +1,7 @@
 #!/usr/bin/env python2.7
 import argparse
 import filecmp
+import json
 import os
 import shutil
 import re
@@ -16,7 +17,7 @@ from edges import scale_edges
 from elements import *
 # --- Debug option to avoid overwriting output
 from images import DatImage
-from scaling import scale_horizontal, scale_vertical, format_as_float, format_as_int
+from scaling import scale_horizontal, scale_vertical, format_as_float, format_as_int, format_as_halves, format_as_twips
 from scanning import is_xfl_file, is_publish_settings, is_dom_document
 
 WRITE_FILES = True
@@ -36,26 +37,6 @@ LEAVE_EXPANDED_FLA = True
 # --- This extracts the images in src/dest sizes in both normal and flattened structures
 EXTRACT_IMAGES = True
 
-# --- Seems like an odd list of fonts
-SD_TO_HD_FONT_MAPPINGS = {
-    'SkyText-Medium': 'SkyScreenRegular',
-    'SkyText-Bold2': 'SkyScreenBold',
-
-    'ArialMT': 'SkyScreenRegular',
-    'Arial-BoldMT': 'SkyScreenBold',
-    'Swiss721BT-Roman': 'SkyScreenRegular',
-    'Swis721CnBT': 'SkyScreenRegular'
-}
-
-# --- Very long list of options, and there are floating point sizes as well
-SD_FONT_SIZES = [14, 15, 16, 17, 18, 19, 20, 21, 22, 25, 26, 28, 29]
-HD_FONT_SIZES = [16, 17, 18, 19, 20, 21, 22, 23, 24, 27, 28, 30, 31]
-
-STROKE_WEIGHT_MAPPINGS = {
-    '3': '5',
-    '0.25': '0.5'
-}
-
 
 def scale_attribute(node, attribute, fn, format=format_as_float):
     if node.has_attr(attribute):
@@ -64,40 +45,49 @@ def scale_attribute(node, attribute, fn, format=format_as_float):
 
 
 def transform_point_coordinates(point):
-    scale_attribute(point, ATTR_X, scale_horizontal)
-    scale_attribute(point, ATTR_Y, scale_vertical)
+    scale_attribute(point, ATTR_X, scale_horizontal, format=format_as_int)
+    scale_attribute(point, ATTR_Y, scale_vertical, format=format_as_int)
 
 
 def change_text_sizing(domtext):
-    scale_attribute(domtext, ATTR_WIDTH, scale_horizontal)
-    scale_attribute(domtext, ATTR_HEIGHT, scale_vertical)
-    scale_attribute(domtext, ATTR_LEFT, scale_horizontal)
+    scale_attribute(domtext, ATTR_WIDTH, scale_horizontal, format=format_as_int)
+    scale_attribute(domtext, ATTR_HEIGHT, scale_vertical, format=format_as_int)
+    scale_attribute(domtext, ATTR_LEFT, scale_horizontal, format=format_as_int)
 
 
-def change_font_name(domtextattrs):
-    face = domtextattrs.attrs[ATTR_FACE]
-    if face in SD_TO_HD_FONT_MAPPINGS:
-        domtextattrs.attrs[ATTR_FACE] = SD_TO_HD_FONT_MAPPINGS[face]
-    else:
-        print "UNKNOWN: Font face of %s" % face
+def get_mapping_value(mappings, attr, key):
+    if attr in mappings:
+        if key in mappings[attr]:
+            return mappings[attr][key]
+        elif 'default' in mappings[attr]:
+            return mappings[attr]['default']
+        else:
+            print "UNKNOWN: %s of %s" % (attr, key)
+    return key
 
 
-def old_change_font_size(domtextattrs):
-    size = str(domtextattrs.attrs[ATTR_SIZE])
-    if not size.isdigit():
-        print "ERROR: Font size is not an integer %s" % size
-        size = size.split('.')[0]
-
-    size = int(size)
-    if size in SD_FONT_SIZES:
-        domtextattrs.attrs[ATTR_SIZE] = HD_FONT_SIZES[SD_FONT_SIZES.index(size)]
-    else:
-        print "UNKNOWN: Font size of %s" % size
+def apply_mappings(node, mappings, attr):
+    if attr in node.attrs:
+        key = node.attrs[attr]
+        node.attrs[attr] = get_mapping_value(mappings, attr, key)
 
 
-def change_font_size(domtextattrs):
-    scale_attribute(domtextattrs, ATTR_SIZE, scale_vertical)
-
+# def old_change_font_size(domtextattrs):
+#     size = str(domtextattrs.attrs[ATTR_SIZE])
+#     if not size.isdigit():
+#         print "ERROR: Font size is not an integer %s" % size
+#         size = size.split('.')[0]
+#
+#     size = int(size)
+#     if size in SD_FONT_SIZES:
+#         domtextattrs.attrs[ATTR_SIZE] = HD_FONT_SIZES[SD_FONT_SIZES.index(size)]
+#     else:
+#         print "UNKNOWN: Font size of %s" % size
+#
+#
+# def change_font_size(domtextattrs):
+#     scale_attribute(domtextattrs, ATTR_SIZE, scale_vertical)
+#
 
 def change_shapes(edge):
     if edge.has_attr(ATTR_EDGES):
@@ -105,35 +95,31 @@ def change_shapes(edge):
 
 
 def change_matrix(matrix):
-    scale_attribute(matrix, ATTR_TX, scale_horizontal)
-    scale_attribute(matrix, ATTR_TY, scale_vertical)
+    scale_attribute(matrix, ATTR_TX, scale_horizontal, format=format_as_int)
+    scale_attribute(matrix, ATTR_TY, scale_vertical, format=format_as_int)
 
 
 def change_symbol_instance(symbol_instance):
-    scale_attribute(symbol_instance, ATTR_CENTER_POINT_3D_X, scale_horizontal)
-    scale_attribute(symbol_instance, ATTR_CENTER_POINT_3D_Y, scale_vertical)
+    scale_attribute(symbol_instance, ATTR_CENTER_POINT_3D_X, scale_horizontal, format=format_as_int)
+    scale_attribute(symbol_instance, ATTR_CENTER_POINT_3D_Y, scale_vertical, format=format_as_int)
 
 
 def change_text_bitmap_size(text_attr):
-    scale_attribute(text_attr, ATTR_BITMAP_SIZE, scale_horizontal)
+    scale_attribute(text_attr, ATTR_BITMAP_SIZE, scale_horizontal, format=format_as_twips)
 
 
 def change_video_instance(video_instance):
-    scale_attribute(video_instance, ATTR_FRAME_RIGHT, scale_horizontal)
-    scale_attribute(video_instance, ATTR_FRAME_BOTTOM, scale_vertical)
-
-
-def change_text_height(input_text):
-    scale_attribute(input_text, ATTR_HEIGHT, scale_vertical)
+    scale_attribute(video_instance, ATTR_FRAME_RIGHT, scale_horizontal, format=format_as_twips)
+    scale_attribute(video_instance, ATTR_FRAME_BOTTOM, scale_vertical, format=format_as_twips)
 
 
 def change_height_literal(layer):
-    scale_attribute(layer, ATTR_HEIGHT_LITERAL, scale_vertical)
+    scale_attribute(layer, ATTR_HEIGHT_LITERAL, scale_vertical, format=format_as_int)
 
 
 def change_text_margins(text_attr):
-    scale_attribute(text_attr, ATTR_LEFT_MARGIN, scale_horizontal)
-    scale_attribute(text_attr, ATTR_RIGHT_MARGIN, scale_horizontal)
+    scale_attribute(text_attr, ATTR_LEFT_MARGIN, scale_horizontal, format=format_as_int)
+    scale_attribute(text_attr, ATTR_RIGHT_MARGIN, scale_horizontal, format=format_as_int)
 
 
 def change_document_size(document):
@@ -142,63 +128,102 @@ def change_document_size(document):
 
 
 def change_stroke_weight(stroke):
-    if ATTR_WEIGHT in stroke.attrs:
-        weight = stroke.attrs[ATTR_WEIGHT]
-        if weight in STROKE_WEIGHT_MAPPINGS:
-            stroke.attrs[ATTR_WEIGHT] = STROKE_WEIGHT_MAPPINGS[weight]
-        else:
-            print "UNKNOWN: Stroke weight of %s" % weight
+    # --- Not clear whether to use vertical or horizontal
+    scale_attribute(stroke, ATTR_WEIGHT, scale_vertical, format=format_as_halves)
 
 
-def scale_and_replace_regex(line, regex, scaler):
+def change_font_size(node, possible_sizes):
+    if node.has_attr(ATTR_SIZE):
+        original_size = scale_vertical(float(node.attrs[ATTR_SIZE]))
+        changed_size = possible_sizes[-1]
+
+        for possible_size in possible_sizes:
+            if original_size <= possible_size:
+                changed_size = possible_size
+                break
+
+        node.attrs[ATTR_SIZE] = changed_size
+
+
+def scale_and_replace_regex(line, regex, scaler, transformation):
     m = regex.search(line)
     if m:
         s, e = m.span(1)
         v = m.group(1)
-        line = line[:s] + scaler(v) + line[e:]
+        line = line[:s] + scaler(v, transformation) + line[e:]
     return line
 
 
-def process_number(value, scaler):
+def process_number(value, scaler, format):
     if '.' in value:
         format_func = format_as_float
         v = float(value)
     else:
         format_func = format_as_int
         v = int(value)
-    return format_func(scaler(v))
+    return format_func(scaler(v), format)
 
 
-def process_horizontal(value):
-    return process_number(value, scale_horizontal)
+def process_horizontal(value, transformation, format=format_as_int):
+    return format(scale_horizontal(float(value)))
+    # return process_number(value, scale_horizontal)
 
 
-def process_vertical(value):
-    return process_number(value, scale_vertical)
+def process_vertical(value, transformation, format=format_as_int):
+    return format(scale_vertical(float(value)))
+    # return process_number(value, scale_vertical)
 
+
+def process_weight(value, transformation):
+    return process_vertical(value, format_as_halves)
+
+
+def process_face(value, transformation):
+    if transformation.font_mappings:
+        return get_mapping_value(transformation.font_mappings, ATTR_FACE, value)
+
+
+def process_edges(value, tranformation):
+    return scale_edges(value)
+
+
+def process_fill_color(value, transformation):
+    if transformation.font_mappings:
+        return get_mapping_value(transformation.font_mappings, ATTR_FILL_COLOR, value)
 
 TRANSFORM_REGEX = [(re.compile(regex), scaler) for regex, scaler in ((' width="(\d+(\.\d+)?)"', process_horizontal),
-                                                                     (' x="(\d+(\.\d+)?)"', process_horizontal),
-                                                                     (' tx="(\d+(\.\d+)?)"', process_horizontal),
+                                                                     (' x="(\-?\d+(\.\d+)?)"', process_horizontal),
+                                                                     (' tx="(\-?\d+(\.\d+)?)"', process_horizontal),
                                                                      (' height="(\d+(\.\d+)?)"', process_vertical),
-                                                                     (' y="(\d+(\.\d+)?)"', process_vertical),
-                                                                     (' ty="(\d+(\.\d+)?)"', process_vertical),
-                                                                     (' edges="([^"]+)"', scale_edges))]
+                                                                     (' y="(\-?\d+(\.\d+)?)"', process_vertical),
+                                                                     (' ty="(\-?\d+(\.\d+)?)"', process_vertical),
+                                                                     (' centerPoint3DX="(\-?\d+(\.\d+)?)"', process_horizontal),
+                                                                     (' centerPoint3DY="(\-?\d+(\.\d+)?)"', process_vertical),
+                                                                     (' weight="(\d+(\.\d+)?)"', process_weight),
+                                                                     (' face="([^"]+)"', process_face),
+                                                                     (' fillColor="([^"]+)"', process_fill_color),
+                                                                     (' edges="([^"]+)"', process_edges))]
+
+
+def apply_font_mappings(node, transformation, attr):
+    if attr in transformation.font_mappings:
+        apply_mappings(node, transformation.font_mappings, attr)
 
 
 def convert_xml_file(old_xml_file, new_xml_file, transformation):
     if SHOW_DEBUG:
         print "Processing XML: %s" % old_xml_file
 
-    if is_dom_document(old_xml_file):
+    if is_dom_document(old_xml_file) and transformation.coords:
+
         # --- DOMDocument is extremely brittle!!!
         with open(old_xml_file, "r") as f:
             contents = ''
 
             for line in f:
                 for reg_ex, scaler in TRANSFORM_REGEX:
-                    line = scale_and_replace_regex(line, reg_ex, scaler)
-                contents += line
+                    line = scale_and_replace_regex(line, reg_ex, scaler, transformation)
+                contents += str(line)
 
         with open(new_xml_file, 'wb') as output_file:
             output_file.write(contents)
@@ -215,12 +240,6 @@ def convert_xml_file(old_xml_file, new_xml_file, transformation):
                 if transformation.coords:
                     # --- <Point/> Modify x/y co-ordinates
                     [transform_point_coordinates(node) for node in soup.findAll(NODE_POINT)]
-
-                    # --- <DOMTextAttrs/> Change font sizes
-                    [change_font_size(node) for node in soup.findAll(NODE_DOM_TEXT_ATTRS)]
-
-                    # --- <DOMFontItem/> Change font sizes
-                    [change_font_size(node) for node in soup.findAll(NODE_DOM_FONT_ITEM)]
 
                     # --- <DOMTextAttrs/> Change bitmap size
                     [change_text_bitmap_size(node) for node in soup.findAll(NODE_DOM_TEXT_ATTRS)]
@@ -246,9 +265,6 @@ def convert_xml_file(old_xml_file, new_xml_file, transformation):
                     # --- <DOMVideoInstance/> Change frameBottom/frameRight
                     [change_video_instance(node) for node in soup.findAll(NODE_DOM_VIDEO_INSTANCE)]
 
-                    # --- <DOMInputText/> Change height
-                    [change_text_height(node) for node in soup.findAll(NODE_DOM_INPUT_TEXT)]
-
                     # --- <DOMLayer/> Change heightLiteral
                     [change_height_literal(node) for node in soup.findAll(NODE_DOM_LAYER)]
 
@@ -257,7 +273,17 @@ def convert_xml_file(old_xml_file, new_xml_file, transformation):
 
                 # --- <DOMTextAttrs/> Change font face
                 if transformation.fonts:
-                    [change_font_name(node) for node in soup.findAll(NODE_DOM_TEXT_ATTRS)]
+                    for node in soup.findAll(NODE_DOM_TEXT_ATTRS):
+                        apply_font_mappings(node, transformation, ATTR_FACE)
+                        apply_font_mappings(node, transformation, ATTR_FILL_COLOR)
+                        if ATTR_SIZE in transformation.font_mappings:
+                            change_font_size(node, transformation.font_mappings[ATTR_SIZE])
+                    for node in soup.findAll(NODE_DOM_FONT_ITEM):
+                        apply_font_mappings(node, transformation, ATTR_FACE)
+                        if ATTR_SIZE in transformation.font_mappings:
+                            change_font_size(node, transformation.font_mappings[ATTR_SIZE])
+                    for node in soup.findAll(NODE_DOM_INPUT_TEXT):
+                        apply_font_mappings(node, transformation, ATTR_HEIGHT)
 
             # --- Write the modified soup out to the new directory
             if WRITE_FILES:
@@ -434,7 +460,7 @@ if __name__ == '__main__':
     parser.add_argument('-coords', action='store_true', help='Process the xml files to upscale co-ordinates',
                         default=False)
     parser.add_argument('-images', action='store_true', help='Process the dat files to upscale images', default=False)
-    parser.add_argument('-fonts', action='store_true', help='Mapping of font families (untested)', default=False)
+    parser.add_argument('-fonts', help='Configuration for font mappings (face, fillColor, size)', default='')
 
     parser.add_argument('-extracted_dir', help='Directory to store image information to', type=str, default='')
     parser.add_argument('-alternates_dir', help='Directory to retrieve alternate images from', type=str, default='')
@@ -456,9 +482,6 @@ if __name__ == '__main__':
         print "Using expanded dir: %s" % config.expanded_dir
 
     if config.extracted_dir:
-        # if not config.images:
-        #     print "ERROR: Cannot extract if -images isn't set"
-        #     exit(1)
         ensure_dir_exists(config.extracted_dir)
         print "Extracting images: %s" % config.extracted_dir
 
@@ -467,7 +490,11 @@ if __name__ == '__main__':
     if config.images:
         print "Transforming images"
     if config.fonts:
-        print "Transforming fonts"
+        print "Transforming fonts: %s" % config.fonts
+        with open(config.fonts) as f:
+            config.font_mappings = json.load(f)
+        if ATTR_SIZE in config.font_mappings:
+            config.font_mappings[ATTR_SIZE].sort(key=int)
 
     bitmaps_csv = BitmapsCSV(config.extracted_dir)
 

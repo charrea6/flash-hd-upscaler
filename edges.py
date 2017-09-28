@@ -1,6 +1,6 @@
 import re
 
-from scaling import scale_horizontal, scale_vertical, format_as_int
+from scaling import scale_horizontal, scale_vertical, format_as_int, format_as_twips
 
 
 def to_number(s):
@@ -19,8 +19,8 @@ def split_edges(edges):
 
 def scale_edge_pair(x_coord, y_coord):
     # print "X %s Y %s" % (x_coord, y_coord)
-    x = format_as_int(scale_horizontal(to_number(x_coord)))
-    y = format_as_int(scale_vertical(to_number(y_coord)))
+    x = format_as_twips(scale_horizontal(to_number(x_coord)))
+    y = format_as_twips(scale_vertical(to_number(y_coord)))
     return '%s %s' % (x, y)
 
 
