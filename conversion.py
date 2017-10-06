@@ -214,19 +214,20 @@ def convert_xml_file(old_xml_file, new_xml_file, transformation):
     if SHOW_DEBUG:
         print "Processing XML: %s" % old_xml_file
 
-    if is_dom_document(old_xml_file) and transformation.coords:
+    if is_dom_document(old_xml_file):
+        if transformation.coords:
 
-        # --- DOMDocument is extremely brittle!!!
-        with open(old_xml_file, "r") as f:
-            contents = ''
+            # --- DOMDocument is extremely brittle!!!
+            with open(old_xml_file, "r") as f:
+                contents = ''
 
-            for line in f:
-                for reg_ex, scaler in TRANSFORM_REGEX:
-                    line = scale_and_replace_regex(line, reg_ex, scaler, transformation)
-                contents += str(line)
+                for line in f:
+                    for reg_ex, scaler in TRANSFORM_REGEX:
+                        line = scale_and_replace_regex(line, reg_ex, scaler, transformation)
+                    contents += str(line)
 
-        with open(new_xml_file, 'wb') as output_file:
-            output_file.write(contents)
+            with open(new_xml_file, 'wb') as output_file:
+                output_file.write(contents)
 
     else:
 
