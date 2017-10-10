@@ -345,6 +345,7 @@ def scan_and_convert_dat(directory, bitmap_details, transformation):
 
                 if os.path.exists(alternate_png):
                     dat_image.insert_alternate_dest_png(alternate_png)
+                    dat_image.copy_dest_to_src()
             else:
                 print "ERROR: Don't understand dat: %s" % dat_file
 
