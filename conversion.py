@@ -37,6 +37,8 @@ LEAVE_EXPANDED_FLA = True
 # --- This extracts the images in src/dest sizes in both normal and flattened structures
 EXTRACT_IMAGES = True
 
+CONFIG_DELTA = "delta"
+CONFIG_MAPPING_DOWN = "mapping_down"
 
 def scale_attribute(node, attribute, fn, format=format_as_float):
     if node.has_attr(attribute):
@@ -71,23 +73,6 @@ def apply_mappings(node, mappings, attr):
         key = node.attrs[attr]
         node.attrs[attr] = get_mapping_value(mappings, attr, key)
 
-
-# def old_change_font_size(domtextattrs):
-#     size = str(domtextattrs.attrs[ATTR_SIZE])
-#     if not size.isdigit():
-#         print "ERROR: Font size is not an integer %s" % size
-#         size = size.split('.')[0]
-#
-#     size = int(size)
-#     if size in SD_FONT_SIZES:
-#         domtextattrs.attrs[ATTR_SIZE] = HD_FONT_SIZES[SD_FONT_SIZES.index(size)]
-#     else:
-#         print "UNKNOWN: Font size of %s" % size
-#
-#
-# def change_font_size(domtextattrs):
-#     scale_attribute(domtextattrs, ATTR_SIZE, scale_vertical)
-#
 
 def change_shapes(edge):
     if edge.has_attr(ATTR_EDGES):
@@ -132,17 +117,51 @@ def change_stroke_weight(stroke):
     scale_attribute(stroke, ATTR_WEIGHT, scale_vertical, format=format_as_halves)
 
 
-def change_font_size(node, possible_sizes):
+def change_font_size(node, font_mappings):
+
+    possible_sizes = font_mappings[ATTR_SIZE]
+    delta = font_mappings[CONFIG_DELTA]
+    mapping_down = font_mappings[CONFIG_MAPPING_DOWN]
+
+    # print delta, possible_sizes, mapping_down
+
     if node.has_attr(ATTR_SIZE):
-        original_size = scale_vertical(float(node.attrs[ATTR_SIZE]))
-        changed_size = possible_sizes[-1]
+        sd_size = float(node.attrs[ATTR_SIZE])
+        hd_size = scale_vertical(sd_size)
 
-        for possible_size in possible_sizes:
-            if original_size <= possible_size:
-                changed_size = possible_size
-                break
+        # --- Is there a delta to apply?
+        hd_size += int(delta)
 
-        node.attrs[ATTR_SIZE] = changed_size
+        if possible_sizes:
+
+            smallest_possible = possible_sizes[0]
+            largest_possible = possible_sizes[-1]
+
+            if hd_size >= largest_possible:
+                new_size = largest_possible
+            else:
+
+                if mapping_down:
+                    new_size = smallest_possible
+                    # --- Mapping down
+                    for possible_size in possible_sizes:
+                        if hd_size >= possible_size:
+                            new_size = possible_size
+                        else:
+                            break
+                else:
+                    new_size = largest_possible
+                    # --- Mapping up
+                    for possible_size in possible_sizes:
+                        if hd_size <= possible_size:
+                            new_size = possible_size
+                            break
+        else:
+            new_size = hd_size
+
+        # print "MAPPING %.1f to %.1f" % (hd_size, new_size)
+
+        node.attrs[ATTR_SIZE] = new_size
 
 
 def scale_and_replace_regex(line, regex, scaler, transformation):
@@ -191,14 +210,17 @@ def process_fill_color(value, transformation):
     if transformation.font_mappings:
         return get_mapping_value(transformation.font_mappings, ATTR_FILL_COLOR, value)
 
+
 TRANSFORM_REGEX = [(re.compile(regex), scaler) for regex, scaler in ((' width="(\d+(\.\d+)?)"', process_horizontal),
                                                                      (' x="(\-?\d+(\.\d+)?)"', process_horizontal),
                                                                      (' tx="(\-?\d+(\.\d+)?)"', process_horizontal),
                                                                      (' height="(\d+(\.\d+)?)"', process_vertical),
                                                                      (' y="(\-?\d+(\.\d+)?)"', process_vertical),
                                                                      (' ty="(\-?\d+(\.\d+)?)"', process_vertical),
-                                                                     (' centerPoint3DX="(\-?\d+(\.\d+)?)"', process_horizontal),
-                                                                     (' centerPoint3DY="(\-?\d+(\.\d+)?)"', process_vertical),
+                                                                     (' centerPoint3DX="(\-?\d+(\.\d+)?)"',
+                                                                      process_horizontal),
+                                                                     (' centerPoint3DY="(\-?\d+(\.\d+)?)"',
+                                                                      process_vertical),
                                                                      (' weight="(\d+(\.\d+)?)"', process_weight),
                                                                      (' face="([^"]+)"', process_face),
                                                                      (' fillColor="([^"]+)"', process_fill_color),
@@ -277,12 +299,12 @@ def convert_xml_file(old_xml_file, new_xml_file, transformation):
                     for node in soup.findAll(NODE_DOM_TEXT_ATTRS):
                         apply_font_mappings(node, transformation, ATTR_FACE)
                         apply_font_mappings(node, transformation, ATTR_FILL_COLOR)
-                        if ATTR_SIZE in transformation.font_mappings:
-                            change_font_size(node, transformation.font_mappings[ATTR_SIZE])
+                        if transformation.font_mappings:
+                            change_font_size(node, transformation.font_mappings)
                     for node in soup.findAll(NODE_DOM_FONT_ITEM):
                         apply_font_mappings(node, transformation, ATTR_FACE)
-                        if ATTR_SIZE in transformation.font_mappings:
-                            change_font_size(node, transformation.font_mappings[ATTR_SIZE])
+                        if transformation.font_mappings:
+                            change_font_size(node, transformation.font_mappings)
                     for node in soup.findAll(NODE_DOM_INPUT_TEXT):
                         apply_font_mappings(node, transformation, ATTR_HEIGHT)
 
@@ -495,8 +517,19 @@ if __name__ == '__main__':
         print "Transforming fonts: %s" % config.fonts
         with open(config.fonts) as f:
             config.font_mappings = json.load(f)
+        if CONFIG_MAPPING_DOWN not in config.font_mappings:
+            config.font_mappings[CONFIG_MAPPING_DOWN] = True
         if ATTR_SIZE in config.font_mappings:
             config.font_mappings[ATTR_SIZE].sort(key=int)
+            print "- Tiering:",config.font_mappings[ATTR_SIZE]
+            print "- Mapping: ", ("Down" if config.font_mappings[CONFIG_MAPPING_DOWN] else "Up")
+        else:
+            config.font_mappings[ATTR_SIZE] = None
+            print "- Linear scaling"
+        if CONFIG_DELTA not in config.font_mappings:
+            config.font_mappings[CONFIG_DELTA] = 0
+        else:
+            print "- Delta: %d" % int(config.font_mappings[CONFIG_DELTA])
 
     bitmaps_csv = BitmapsCSV(config.extracted_dir)
 
