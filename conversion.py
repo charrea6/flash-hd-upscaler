@@ -17,7 +17,8 @@ from edges import scale_edges
 from elements import *
 # --- Debug option to avoid overwriting output
 from images import DatImage
-from scaling import scale_horizontal, scale_vertical, format_as_float, format_as_int, format_as_halves, format_as_twips
+from scaling import scale_horizontal, scale_vertical, format_as_float, format_as_int, format_as_halves, format_as_twips, \
+    pixels_to_twips
 from scanning import is_xfl_file, is_publish_settings, is_dom_document
 
 WRITE_FILES = True
@@ -39,6 +40,8 @@ EXTRACT_IMAGES = True
 
 CONFIG_DELTA = "delta"
 CONFIG_MAPPING_DOWN = "mapping_down"
+CONFIG_DEFAULT_SIZE = "default_size"
+
 
 def scale_attribute(node, attribute, fn, format=format_as_float):
     if node.has_attr(attribute):
@@ -117,7 +120,12 @@ def change_stroke_weight(stroke):
     scale_attribute(stroke, ATTR_WEIGHT, scale_vertical, format=format_as_halves)
 
 
-def change_font_size(node, font_mappings):
+def calculate_font_size(sd_size, font_mappings):
+
+    hd_size = scale_vertical(sd_size)
+
+    if not font_mappings:
+        return hd_size
 
     possible_sizes = font_mappings[ATTR_SIZE]
     delta = font_mappings[CONFIG_DELTA]
@@ -125,72 +133,86 @@ def change_font_size(node, font_mappings):
 
     # print delta, possible_sizes, mapping_down
 
+    # --- Is there a delta to apply?
+    hd_size += int(delta)
+
+    if possible_sizes:
+
+        smallest_possible = possible_sizes[0]
+        largest_possible = possible_sizes[-1]
+
+        if hd_size >= largest_possible:
+            new_size = largest_possible
+        else:
+
+            if mapping_down:
+                new_size = smallest_possible
+                # --- Mapping down
+                for possible_size in possible_sizes:
+                    if hd_size >= possible_size:
+                        new_size = possible_size
+                    else:
+                        break
+            else:
+                new_size = largest_possible
+                # --- Mapping up
+                for possible_size in possible_sizes:
+                    if hd_size <= possible_size:
+                        new_size = possible_size
+                        break
+    else:
+        new_size = hd_size
+
+    # print "MAPPING %.1f to %.1f" % (hd_size, new_size)
+    return new_size
+
+
+def change_font_size(node, font_mappings):
+
     if node.has_attr(ATTR_SIZE):
         sd_size = float(node.attrs[ATTR_SIZE])
-        hd_size = scale_vertical(sd_size)
 
-        # --- Is there a delta to apply?
-        hd_size += int(delta)
-
-        if possible_sizes:
-
-            smallest_possible = possible_sizes[0]
-            largest_possible = possible_sizes[-1]
-
-            if hd_size >= largest_possible:
-                new_size = largest_possible
-            else:
-
-                if mapping_down:
-                    new_size = smallest_possible
-                    # --- Mapping down
-                    for possible_size in possible_sizes:
-                        if hd_size >= possible_size:
-                            new_size = possible_size
-                        else:
-                            break
-                else:
-                    new_size = largest_possible
-                    # --- Mapping up
-                    for possible_size in possible_sizes:
-                        if hd_size <= possible_size:
-                            new_size = possible_size
-                            break
-        else:
-            new_size = hd_size
-
-        # print "MAPPING %.1f to %.1f" % (hd_size, new_size)
+        new_size = calculate_font_size(sd_size, font_mappings)
 
         node.attrs[ATTR_SIZE] = new_size
 
+        # --- Make sure bitmapSize attribute matches the upscaling of the font size
+        if node.has_attr(ATTR_BITMAP_SIZE):
+            node.attrs[ATTR_BITMAP_SIZE] = pixels_to_twips(new_size)
+    else:
+        if CONFIG_DEFAULT_SIZE in font_mappings:
+            default_size = font_mappings[CONFIG_DEFAULT_SIZE]
+            node.attrs[ATTR_SIZE] = default_size
+            node.attrs[ATTR_BITMAP_SIZE] = pixels_to_twips(default_size)
+        else:
+            print "No font size and no default available"
 
-def scale_and_replace_regex(line, regex, scaler, transformation):
+
+def process_and_replace_regex(line, regex, process_fn, transformation):
     m = regex.search(line)
     if m:
         s, e = m.span(1)
         v = m.group(1)
-        line = line[:s] + scaler(v, transformation) + line[e:]
+        line = line[:s] + str(process_fn(v, transformation)) + line[e:]
     return line
 
 
-def process_number(value, scaler, format):
+def process_number(value, scale_fn, format):
     if '.' in value:
         format_func = format_as_float
         v = float(value)
     else:
         format_func = format_as_int
         v = int(value)
-    return format_func(scaler(v), format)
+    return format_func(scale_fn(v), format)
 
 
 def process_horizontal(value, transformation, format=format_as_int):
     return format(scale_horizontal(float(value)))
-    # return process_number(value, scale_horizontal)
 
 
 def process_vertical(value, transformation, format=format_as_int):
     return format(scale_vertical(float(value)))
-    # return process_number(value, scale_vertical)
 
 
 def process_weight(value, transformation):
@@ -200,6 +222,7 @@ def process_weight(value, transformation):
 def process_face(value, transformation):
     if transformation.font_mappings:
         return get_mapping_value(transformation.font_mappings, ATTR_FACE, value)
+    return value
 
 
 def process_edges(value, tranformation):
@@ -211,20 +234,27 @@ def process_fill_color(value, transformation):
         return get_mapping_value(transformation.font_mappings, ATTR_FILL_COLOR, value)
 
 
-TRANSFORM_REGEX = [(re.compile(regex), scaler) for regex, scaler in ((' width="(\d+(\.\d+)?)"', process_horizontal),
-                                                                     (' x="(\-?\d+(\.\d+)?)"', process_horizontal),
-                                                                     (' tx="(\-?\d+(\.\d+)?)"', process_horizontal),
-                                                                     (' height="(\d+(\.\d+)?)"', process_vertical),
-                                                                     (' y="(\-?\d+(\.\d+)?)"', process_vertical),
-                                                                     (' ty="(\-?\d+(\.\d+)?)"', process_vertical),
-                                                                     (' centerPoint3DX="(\-?\d+(\.\d+)?)"',
+def process_font_size(value, transformation):
+    sd_size = float(value)
+    return calculate_font_size(sd_size, transformation.font_mappings)
+
+
+TRANSFORM_REGEX = [(re.compile(regex), process_fn) for regex, process_fn in ((' width="(\d+(\.\d+)?)"', process_horizontal),
+                                                                             (' x="(\-?\d+(\.\d+)?)"', process_horizontal),
+                                                                             (' tx="(\-?\d+(\.\d+)?)"', process_horizontal),
+                                                                             (' height="(\d+(\.\d+)?)"', process_vertical),
+                                                                             (' y="(\-?\d+(\.\d+)?)"', process_vertical),
+                                                                             (' ty="(\-?\d+(\.\d+)?)"', process_vertical),
+                                                                             (' centerPoint3DX="(\-?\d+(\.\d+)?)"',
                                                                       process_horizontal),
-                                                                     (' centerPoint3DY="(\-?\d+(\.\d+)?)"',
+                                                                             (' centerPoint3DY="(\-?\d+(\.\d+)?)"',
                                                                       process_vertical),
-                                                                     (' weight="(\d+(\.\d+)?)"', process_weight),
-                                                                     (' face="([^"]+)"', process_face),
-                                                                     (' fillColor="([^"]+)"', process_fill_color),
-                                                                     (' edges="([^"]+)"', process_edges))]
+                                                                             (' weight="(\d+(\.\d+)?)"', process_weight),
+                                                                             (' face="([^"]+)"', process_face),
+                                                                             (' fillColor="([^"]+)"', process_fill_color),
+                                                                             (' edges="([^"]+)"', process_edges),
+                                                                             (' size="([^"]+)"', process_font_size))
+                   ]
 
 
 def apply_font_mappings(node, transformation, attr):
@@ -244,8 +274,8 @@ def convert_xml_file(old_xml_file, new_xml_file, transformation):
                 contents = ''
 
                 for line in f:
-                    for reg_ex, scaler in TRANSFORM_REGEX:
-                        line = scale_and_replace_regex(line, reg_ex, scaler, transformation)
+                    for reg_ex, process_fn in TRANSFORM_REGEX:
+                        line = process_and_replace_regex(line, reg_ex, process_fn, transformation)
                     contents += str(line)
 
             with open(new_xml_file, 'wb') as output_file:
@@ -307,6 +337,7 @@ def convert_xml_file(old_xml_file, new_xml_file, transformation):
                             change_font_size(node, transformation.font_mappings)
                     for node in soup.findAll(NODE_DOM_INPUT_TEXT):
                         apply_font_mappings(node, transformation, ATTR_HEIGHT)
+                        change_text_sizing(node)
 
             # --- Write the modified soup out to the new directory
             if WRITE_FILES:
@@ -521,7 +552,7 @@ if __name__ == '__main__':
             config.font_mappings[CONFIG_MAPPING_DOWN] = True
         if ATTR_SIZE in config.font_mappings:
             config.font_mappings[ATTR_SIZE].sort(key=int)
-            print "- Tiering:",config.font_mappings[ATTR_SIZE]
+            print "- Tiering:", config.font_mappings[ATTR_SIZE]
             print "- Mapping: ", ("Down" if config.font_mappings[CONFIG_MAPPING_DOWN] else "Up")
         else:
             config.font_mappings[ATTR_SIZE] = None
@@ -530,6 +561,8 @@ if __name__ == '__main__':
             config.font_mappings[CONFIG_DELTA] = 0
         else:
             print "- Delta: %d" % int(config.font_mappings[CONFIG_DELTA])
+        if CONFIG_DEFAULT_SIZE in config.font_mappings:
+            print "- Default size:", config.font_mappings[CONFIG_DEFAULT_SIZE]
 
     bitmaps_csv = BitmapsCSV(config.extracted_dir)
 

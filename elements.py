@@ -27,6 +27,7 @@ ATTR_WIDTH = 'width'
 ATTR_HEIGHT = 'height'
 ATTR_LEFT = 'left'
 ATTR_EDGES = 'edges'
+ATTR_BITMAP_SIZE = 'bitmapSize'
 
 ATTR_COLOR = 'color'
 ATTR_FILL_COLOR = 'fillColor'
