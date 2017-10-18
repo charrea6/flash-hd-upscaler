@@ -18,7 +18,7 @@ from elements import *
 # --- Debug option to avoid overwriting output
 from images import DatImage
 from scaling import scale_horizontal, scale_vertical, format_as_float, format_as_int, format_as_halves, format_as_twips, \
-    pixels_to_twips
+    pixels_to_twips, scale_by_multiplier
 from scanning import is_xfl_file, is_publish_settings, is_dom_document
 
 WRITE_FILES = True
@@ -41,6 +41,7 @@ EXTRACT_IMAGES = True
 CONFIG_DELTA = "delta"
 CONFIG_MAPPING_DOWN = "mapping_down"
 CONFIG_DEFAULT_SIZE = "default_size"
+CONFIG_OVERRIDE_UPSCALE = "override_upscale"
 
 
 def scale_attribute(node, attribute, fn, format=format_as_float):
@@ -122,7 +123,10 @@ def change_stroke_weight(stroke):
 
 def calculate_font_size(sd_size, font_mappings):
 
-    hd_size = scale_vertical(sd_size)
+    if CONFIG_OVERRIDE_UPSCALE in font_mappings:
+        hd_size = int(scale_by_multiplier(sd_size, font_mappings[CONFIG_OVERRIDE_UPSCALE]))
+    else:
+        hd_size = int(scale_vertical(sd_size))
 
     if not font_mappings:
         return hd_size
@@ -135,6 +139,8 @@ def calculate_font_size(sd_size, font_mappings):
 
     # --- Is there a delta to apply?
     hd_size += int(delta)
+
+    # print sd_size, hd_size
 
     if possible_sizes:
 
@@ -563,6 +569,8 @@ if __name__ == '__main__':
             print "- Delta: %d" % int(config.font_mappings[CONFIG_DELTA])
         if CONFIG_DEFAULT_SIZE in config.font_mappings:
             print "- Default size:", config.font_mappings[CONFIG_DEFAULT_SIZE]
+        if CONFIG_OVERRIDE_UPSCALE in config.font_mappings:
+            print "- Override upscale:", config.font_mappings[CONFIG_OVERRIDE_UPSCALE]
 
     bitmaps_csv = BitmapsCSV(config.extracted_dir)
 

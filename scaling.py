@@ -44,6 +44,8 @@ def scale_horizontal(x):
 def scale_vertical(y):
     return y * HD_PLANE_HEIGHT / SD_PLANE_HEIGHT
 
+def scale_by_multiplier(v, m):
+    return v * m
 
 def pixels_to_twips(pixels):
     return TWIPS_PER_PIXEL * pixels
