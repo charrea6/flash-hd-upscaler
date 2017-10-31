@@ -409,6 +409,9 @@ def scan_and_convert_dat(directory, bitmap_details, transformation):
             if key in bitmap_details:
                 alternate_png = os.path.join(transformation.alternates_dir, get_basename(bitmap_details[key]['href']))
 
+                if not os.path.splitext(alternate_png)[1]:
+                    alternate_png += '.png'
+
                 if os.path.exists(alternate_png):
                     dat_image.insert_alternate_dest_png(alternate_png)
                     dat_image.copy_dest_to_src()
