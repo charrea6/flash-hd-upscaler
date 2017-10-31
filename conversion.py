@@ -51,14 +51,14 @@ def scale_attribute(node, attribute, fn, format=format_as_float):
 
 
 def transform_point_coordinates(point):
-    scale_attribute(point, ATTR_X, scale_horizontal, format=format_as_int)
-    scale_attribute(point, ATTR_Y, scale_vertical, format=format_as_int)
+    scale_attribute(point, ATTR_X, scale_horizontal, format=format_as_float)
+    scale_attribute(point, ATTR_Y, scale_vertical, format=format_as_float)
 
 
 def change_text_sizing(domtext):
-    scale_attribute(domtext, ATTR_WIDTH, scale_horizontal, format=format_as_int)
-    scale_attribute(domtext, ATTR_HEIGHT, scale_vertical, format=format_as_int)
-    scale_attribute(domtext, ATTR_LEFT, scale_horizontal, format=format_as_int)
+    scale_attribute(domtext, ATTR_WIDTH, scale_horizontal, format=format_as_float)
+    scale_attribute(domtext, ATTR_HEIGHT, scale_vertical, format=format_as_float)
+    scale_attribute(domtext, ATTR_LEFT, scale_horizontal, format=format_as_float)
 
 
 def get_mapping_value(mappings, attr, key):
@@ -84,8 +84,8 @@ def change_shapes(edge):
 
 
 def change_matrix(matrix):
-    scale_attribute(matrix, ATTR_TX, scale_horizontal, format=format_as_int)
-    scale_attribute(matrix, ATTR_TY, scale_vertical, format=format_as_int)
+    scale_attribute(matrix, ATTR_TX, scale_horizontal, format=format_as_float)
+    scale_attribute(matrix, ATTR_TY, scale_vertical, format=format_as_float)
 
 
 def change_symbol_instance(symbol_instance):
@@ -103,17 +103,17 @@ def change_video_instance(video_instance):
 
 
 def change_height_literal(layer):
-    scale_attribute(layer, ATTR_HEIGHT_LITERAL, scale_vertical, format=format_as_int)
+    scale_attribute(layer, ATTR_HEIGHT_LITERAL, scale_vertical, format=format_as_float)
 
 
 def change_text_margins(text_attr):
-    scale_attribute(text_attr, ATTR_LEFT_MARGIN, scale_horizontal, format=format_as_int)
-    scale_attribute(text_attr, ATTR_RIGHT_MARGIN, scale_horizontal, format=format_as_int)
+    scale_attribute(text_attr, ATTR_LEFT_MARGIN, scale_horizontal, format=format_as_float)
+    scale_attribute(text_attr, ATTR_RIGHT_MARGIN, scale_horizontal, format=format_as_float)
 
 
-def change_document_size(document):
-    scale_attribute(document, ATTR_WIDTH, scale_horizontal, format=format_as_int)
-    scale_attribute(document, ATTR_HEIGHT, scale_vertical, format=format_as_int)
+# def change_document_size(document):
+#     scale_attribute(document, ATTR_WIDTH, scale_horizontal, format=format_as_int)
+#     scale_attribute(document, ATTR_HEIGHT, scale_vertical, format=format_as_int)
 
 
 def change_stroke_weight(stroke):
@@ -122,7 +122,6 @@ def change_stroke_weight(stroke):
 
 
 def calculate_font_size(sd_size, font_mappings):
-
     if CONFIG_OVERRIDE_UPSCALE in font_mappings:
         hd_size = int(scale_by_multiplier(sd_size, font_mappings[CONFIG_OVERRIDE_UPSCALE]))
     else:
@@ -174,7 +173,6 @@ def calculate_font_size(sd_size, font_mappings):
 
 
 def change_font_size(node, font_mappings):
-
     if node.has_attr(ATTR_SIZE):
         sd_size = float(node.attrs[ATTR_SIZE])
 
@@ -213,11 +211,11 @@ def process_number(value, scale_fn, format):
     return format_func(scale_fn(v), format)
 
 
-def process_horizontal(value, transformation, format=format_as_int):
+def process_horizontal(value, transformation, format=format_as_float):
     return format(scale_horizontal(float(value)))
 
 
-def process_vertical(value, transformation, format=format_as_int):
+def process_vertical(value, transformation, format=format_as_float):
     return format(scale_vertical(float(value)))
 
 
@@ -245,21 +243,30 @@ def process_font_size(value, transformation):
     return calculate_font_size(sd_size, transformation.font_mappings)
 
 
-TRANSFORM_REGEX = [(re.compile(regex), process_fn) for regex, process_fn in ((' width="(\d+(\.\d+)?)"', process_horizontal),
-                                                                             (' x="(\-?\d+(\.\d+)?)"', process_horizontal),
-                                                                             (' tx="(\-?\d+(\.\d+)?)"', process_horizontal),
-                                                                             (' height="(\d+(\.\d+)?)"', process_vertical),
-                                                                             (' y="(\-?\d+(\.\d+)?)"', process_vertical),
-                                                                             (' ty="(\-?\d+(\.\d+)?)"', process_vertical),
-                                                                             (' centerPoint3DX="(\-?\d+(\.\d+)?)"',
-                                                                      process_horizontal),
-                                                                             (' centerPoint3DY="(\-?\d+(\.\d+)?)"',
-                                                                      process_vertical),
-                                                                             (' weight="(\d+(\.\d+)?)"', process_weight),
-                                                                             (' face="([^"]+)"', process_face),
-                                                                             (' fillColor="([^"]+)"', process_fill_color),
-                                                                             (' edges="([^"]+)"', process_edges),
-                                                                             (' size="([^"]+)"', process_font_size))
+def dom_process_horizontal(value, transformation):
+    return process_horizontal(value, transformation, format_as_int)
+
+
+def dom_process_vertical(value, transformation):
+    return process_vertical(value, transformation, format_as_int)
+
+
+TRANSFORM_REGEX = [(re.compile(regex), process_fn) for regex, process_fn in
+                   ((' width="(\d+(\.\d+)?)"', dom_process_horizontal),
+                    (' x="(\-?\d+(\.\d+)?)"', dom_process_horizontal),
+                    (' tx="(\-?\d+(\.\d+)?)"', dom_process_horizontal),
+                    (' height="(\d+(\.\d+)?)"', dom_process_vertical),
+                    (' y="(\-?\d+(\.\d+)?)"', dom_process_vertical),
+                    (' ty="(\-?\d+(\.\d+)?)"', dom_process_vertical),
+                    (' centerPoint3DX="(\-?\d+(\.\d+)?)"',
+                     dom_process_horizontal),
+                    (' centerPoint3DY="(\-?\d+(\.\d+)?)"',
+                     dom_process_vertical),
+                    (' weight="(\d+(\.\d+)?)"', process_weight),
+                    (' face="([^"]+)"', process_face),
+                    (' fillColor="([^"]+)"', process_fill_color),
+                    (' edges="([^"]+)"', process_edges),
+                    (' size="([^"]+)"', process_font_size))
                    ]
 
 

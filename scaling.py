@@ -16,7 +16,7 @@ TWIPS_PER_PIXEL = 20
 
 
 def rounding(value, delta):
-    return value+delta if value >= 0 else value-delta
+    return value + delta if value >= 0 else value - delta
 
 
 def format_as_float(value):
@@ -44,8 +44,10 @@ def scale_horizontal(x):
 def scale_vertical(y):
     return y * HD_PLANE_HEIGHT / SD_PLANE_HEIGHT
 
+
 def scale_by_multiplier(v, m):
     return v * m
+
 
 def pixels_to_twips(pixels):
     return TWIPS_PER_PIXEL * pixels
