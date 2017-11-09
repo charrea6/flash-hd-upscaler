@@ -36,6 +36,11 @@ JPEG_MAGIC = 0xd8ff
 ARGB_MAGIC = 0x0503
 CLUT_MAGIC = 0x0303
 
+SAVE_AS_JPEG = [
+    'bck_grid.png',
+    'rsk_Archiv_overlay.png'
+]
+SAVE_AS_JPEG =[]
 
 def get_header(f, fmt):
     l = struct.calcsize(fmt)
@@ -131,7 +136,6 @@ def load_jpeg(fn):
 
 
 def load_dat(input_file):
-    output_file = input_file.replace('.dat', '.png')
 
     f = open(input_file, 'rb')
 
@@ -224,6 +228,86 @@ def write_compressed_data(f, data):
     f.write('\0\0')
 
 
+def convert_to_clut(img):
+    colours = []
+    pixels = []
+    w,h = img.size
+    for y in range(h):
+        for x in range(w):
+            c = img.getpixel((x,y))
+            try:
+                i = colours.index(c)
+                pixels.append(i)
+            except ValueError:
+                colours.append(c)
+                if len(colours) > 256:
+                    return None
+                pixels.append(len(colours) - 1)
+
+    return colours, pixels
+
+
+def write_argb_image(img, output_file):
+    w,h = img.size
+    header = struct.pack('<HHHHIIIIBB', ARGB_MAGIC, w * 4, w, h, 0,
+                         pixels_to_twips(w), 0, pixels_to_twips(h), 1, 1)
+    data = img.convert(mode='RGBA').tobytes()
+    converted = ''
+    for x in range(0, len(data), 4):
+        converted += data[x + 3] + data[x:x + 3]
+
+    with open(output_file, 'wb') as f:
+        f.write(header)
+        write_compressed_data(f, converted)
+
+
+def write_clut_image(size, clut, pixels, output_file):
+    w,h = size
+    nrof_colours = len(clut)
+    if nrof_colours == 256:
+        nrof_colours = 0
+
+    if w % 4 == 0:
+        row_len = w
+    else:
+        row_len = ((w // 4) + 1) * 4
+
+    pixel_bytes = ''
+    i = 0
+    extension = chr(0) * (row_len - w)
+    for y in range(h):
+        for b in pixels[i:i+w]:
+            pixel_bytes += chr(b)
+        pixel_bytes += extension
+        i += w
+
+    header = struct.pack(b'<HHHHIIIIBBH', CLUT_MAGIC, row_len, w, h, 0,
+                         pixels_to_twips(w), 0, pixels_to_twips(h), 0, nrof_colours, 0xFF00)
+    with open(output_file, 'wb') as f:
+        f.write(header)
+        print('CLUT START - %s' % output_file)
+        i = 0
+        for colour in clut:
+            if len(colour) == 3:
+                a = 255
+                r,g,b = colour
+            else:
+                r,g,b,a = colour
+            print('\t%d : RGBA(%d, %d, %d, %d)' % (i, r,g,b,a))
+            i += 1
+            f.write(struct.pack(b'<BBBB', r,g,b,a))
+        print('CLUT END')
+        write_compressed_data(f, pixel_bytes)
+
+
+def write_image(img, output_file):
+    clut_info = convert_to_clut(img)
+    if clut_info is None:
+        write_argb_image(img, output_file)
+    else:
+        write_clut_image(img.size, clut_info[0], clut_info[1], output_file)
+
+
 class DatImage:
     def __init__(self, src_dat_file):
         self.src_dat_file = src_dat_file
@@ -244,6 +328,7 @@ class DatImage:
         self.dest_image = None
 
         self.invalid = False
+        self.save_as_jpeg = False
 
     def is_valid(self):
         return not self.invalid
@@ -289,6 +374,8 @@ class DatImage:
             self.dest_image.save(self.dest_png_file)
 
     def insert_alternate_dest_png(self, alternate_png):
+        fn = os.path.split(alternate_png)[1]
+        self.save_as_jpeg = fn in SAVE_AS_JPEG
         self.dest_image = Image.open(alternate_png)
         self.dest_image.save(self.dest_png_file)
         self.dest_w, self.dest_h = self.dest_image.size
@@ -302,16 +389,11 @@ class DatImage:
         if not self.dest_image:
             return
 
-        self.dest_header = struct.pack('<HHHHIIIIBB', ARGB_MAGIC, self.dest_w * 4, self.dest_w, self.dest_h, 0,
-                                       pixels_to_twips(self.dest_w), 0, pixels_to_twips(self.dest_h), 1, 1)
-        data = self.dest_image.convert(mode='RGBA').tobytes()
-        converted = ''
-        for x in range(0, len(data), 4):
-            converted += data[x + 3] + data[x:x + 3]
-
-        with open(self.dest_dat_file, 'wb') as f:
-            f.write(self.dest_header)
-            write_compressed_data(f, converted)
+        self.dest_header = True
+        if self.save_as_jpeg:
+            self.dest_image.convert('RGB').save(self.dest_dat_file, 'jpeg')
+        else:
+            write_image(self.dest_image, self.dest_dat_file)
 
     def copy_dest_to_src(self):
         self.insert_dest_png()
