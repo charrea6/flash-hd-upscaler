@@ -62,7 +62,7 @@ REGEX = [(re.compile(regex), callback)
 
 
 def process_file(filename, options):
-    print 'Processing %s ....' % filename
+    print 'Processing %s ....' % filename,
     transform = False
     with open(filename, 'rb') as in_f:
         for line in in_f:
@@ -76,7 +76,7 @@ def process_file(filename, options):
                 break
 
     if transform:
-        print 'Transforming %s ....' % filename
+        print 'Transforming %s ....' % filename,
         original_file = filename + '.orig'
         os.rename(filename, original_file)
         with open(original_file, 'rb') as in_f:
@@ -92,14 +92,21 @@ def process_file(filename, options):
         if not options.keep_original:
             os.unlink(original_file)
     print 'Done'
+    return transform
 
 
 def process_dir(dirname, options):
     print 'Processing directory hierarchy %s' % dirname
+    files_processed = 0
+    files_transformed = 0
     for dirpath,dirs,names in os.walk(dirname, followlinks=True):
         for name in names:
             if name.endswith('.as'):
-                process_file(os.path.join(dirpath, name), options)
+                files_processed += 1
+                if process_file(os.path.join(dirpath, name), options):
+                    files_transformed += 1
+    print 'Processed  : %d' % files_processed
+    print 'Transformed: %d' % files_transformed
 
 
 if __name__ == '__main__':
