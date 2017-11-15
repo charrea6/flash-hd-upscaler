@@ -5,7 +5,7 @@ import os
 def _decode_href(href):
     href = href.replace('&#60', '<')
     href = href.replace('&#62', '>')
-    return href
+    return href.encode('utf-8')
 
 
 class BitmapsCSV:
