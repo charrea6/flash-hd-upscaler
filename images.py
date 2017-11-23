@@ -182,16 +182,17 @@ def load_dat(input_file):
     f.close()
 
     if header[0] == JPEG_MAGIC:
-        return load_jpeg(input_file)
+        return load_jpeg(input_file),True
 
     elif header[0] == ARGB_MAGIC:
-        return load_flash_format_0503(input_file)
+        return load_flash_format_0503(input_file),False
 
     elif header[0] == CLUT_MAGIC:
-        return load_flash_format_0303(input_file)
+        return load_flash_format_0303(input_file), False
         # return
     else:
         print '%s: Unknown type of dat file (0x%04x)' % (input_file,header[0])
+    return None, False
 
 
 def write_compressed_chunk(f, data):
@@ -245,6 +246,7 @@ class DatImage:
 
         self.invalid = False
 
+
     def is_valid(self):
         return not self.invalid
 
@@ -252,7 +254,7 @@ class DatImage:
         if self.invalid:
             return
 
-        self.src_image = load_dat(self.src_dat_file)
+        self.src_image, self.is_jpeg = load_dat(self.src_dat_file)
         if self.src_image is None:
             self.invalid = True
             return self
@@ -289,9 +291,19 @@ class DatImage:
             self.dest_image.save(self.dest_png_file)
 
     def insert_alternate_dest_png(self, alternate_png):
-        self.dest_image = Image.open(alternate_png)
-        self.dest_image.save(self.dest_png_file)
-        self.dest_w, self.dest_h = self.dest_image.size
+        self._decode_src_image()
+        if self.is_jpeg:
+            print 'Processing a JPEG image: %s'
+            if alternate_png.endswith('.jpg') or alternate_png.endswith('.jpeg'):
+                with open(alternate_png) as f:
+                    self.dest_image = f.read()
+            else:
+                self.dest_image = Image.open(alternate_png)
+
+        else:
+            self.dest_image = Image.open(alternate_png)
+            self.dest_image.save(self.dest_png_file)
+            self.dest_w, self.dest_h = self.dest_image.size
 
     def insert_dest_png(self):
         if self.invalid or self.dest_header:
@@ -302,16 +314,26 @@ class DatImage:
         if not self.dest_image:
             return
 
-        self.dest_header = struct.pack('<HHHHIIIIBB', ARGB_MAGIC, self.dest_w * 4, self.dest_w, self.dest_h, 0,
-                                       pixels_to_twips(self.dest_w), 0, pixels_to_twips(self.dest_h), 1, 1)
-        data = self.dest_image.convert(mode='RGBA').tobytes()
-        converted = ''
-        for x in range(0, len(data), 4):
-            converted += data[x + 3] + data[x:x + 3]
+        if self.is_jpeg:
+            if isinstance(self.dest_image, Image):
+                import io
+                out = io.BytesIO()
+                self.dest_image.save(out, 'JPEG')
+                self.dest_image = out.getvalue()
 
-        with open(self.dest_dat_file, 'wb') as f:
-            f.write(self.dest_header)
-            write_compressed_data(f, converted)
+            with open(self.dest_dat_file, 'wb') as f:
+                f.write(self.dest_image)
+        else:
+            self.dest_header = struct.pack('<HHHHIIIIBB', ARGB_MAGIC, self.dest_w * 4, self.dest_w, self.dest_h, 0,
+                                           pixels_to_twips(self.dest_w), 0, pixels_to_twips(self.dest_h), 1, 1)
+            data = self.dest_image.convert(mode='RGBA').tobytes()
+            converted = ''
+            for x in range(0, len(data), 4):
+                converted += data[x + 3] + data[x:x + 3]
+
+            with open(self.dest_dat_file, 'wb') as f:
+                f.write(self.dest_header)
+                write_compressed_data(f, converted)
 
     def copy_dest_to_src(self):
         self.insert_dest_png()
