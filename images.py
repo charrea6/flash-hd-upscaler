@@ -329,7 +329,14 @@ class DatImage:
             data = self.dest_image.convert(mode='RGBA').tobytes()
             converted = ''
             for x in range(0, len(data), 4):
-                converted += data[x + 3] + data[x:x + 3]
+                r,g,b,a = [ord(i) for i in data[x:x+4]]
+                if a == 0:
+                    r,g,b= 0,0,0
+                elif a != 255:
+                    r = (r * a) / 255
+                    g = (g * a) / 255
+                    b = (b * a) / 255
+                converted += chr(a) + chr(r) + chr(g) + chr(b)
 
             with open(self.dest_dat_file, 'wb') as f:
                 f.write(self.dest_header)

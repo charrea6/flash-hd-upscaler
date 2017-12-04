@@ -280,19 +280,24 @@ def convert_xml_file(old_xml_file, new_xml_file, transformation):
         print "Processing XML: %s" % old_xml_file
 
     if is_dom_document(old_xml_file):
-        if transformation.coords:
+        # --- DOMDocument is extremely brittle!!!
+        with open(old_xml_file, "r") as f:
+            contents = ''
 
-            # --- DOMDocument is extremely brittle!!!
-            with open(old_xml_file, "r") as f:
-                contents = ''
-
-                for line in f:
+            for line in f:
+                if transformation.coords:
                     for reg_ex, process_fn in TRANSFORM_REGEX:
                         line = process_and_replace_regex(line, reg_ex, process_fn, transformation)
-                    contents += str(line)
 
-            with open(new_xml_file, 'wb') as output_file:
-                output_file.write(contents)
+                if transformation.lossless and '<DOMBitmapItem' in line:
+                    if not ' compressionType=' in line:
+                        oct = line.index(' originalCompressionType=')
+                        line = line[:oct] + ' compressionType="lossless"' + line[oct:]
+
+                contents += str(line)
+
+        with open(new_xml_file, 'wb') as output_file:
+            output_file.write(contents)
 
     else:
 
@@ -540,6 +545,8 @@ if __name__ == '__main__':
     parser.add_argument('-alternates_dir', help='Directory to retrieve alternate images from', type=str, default='')
     parser.add_argument('-expanded_dir', help='Directory to use for temporary expansion', type=str, default='')
 
+    parser.add_argument('-lossless', action='store_true', help='Ensure all images are compiled into the SWF as lossless.',
+                        default=False)
     parser.add_argument('path', help='Path to either the .FLA file or directory')
 
     config = parser.parse_args()
